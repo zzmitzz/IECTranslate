@@ -69,6 +69,9 @@ class AudioStreamingApp {
         this.stopRecordingBtn.addEventListener('click', () => this.stopRecording());
         this.clearLogsBtn.addEventListener('click', () => this.clearLogs());
         
+        // Audio quality control event listeners
+        this.setupAudioQualityControls();
+        
         // Handle form submission
         document.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
@@ -77,6 +80,118 @@ class AudioStreamingApp {
                 }
             }
         });
+    }
+
+    setupAudioQualityControls() {
+        // Volume control
+        const volumeControl = document.getElementById('volumeControl');
+        const volumeValue = document.getElementById('volumeValue');
+        
+        if (volumeControl && volumeValue) {
+            volumeControl.addEventListener('input', (e) => {
+                const volume = e.target.value / 100;
+                volumeValue.textContent = `${e.target.value}%`;
+                this.setAudioVolume(volume);
+            });
+        }
+        
+        // Bass boost control
+        const bassBoost = document.getElementById('bassBoost');
+        if (bassBoost) {
+            bassBoost.addEventListener('change', (e) => {
+                this.setBassBoost(e.target.checked);
+            });
+        }
+        
+        // Treble boost control
+        const trebleBoost = document.getElementById('trebleBoost');
+        if (trebleBoost) {
+            trebleBoost.addEventListener('change', (e) => {
+                this.setTrebleBoost(e.target.checked);
+            });
+        }
+        
+        // Buffer size control
+        const bufferSize = document.getElementById('bufferSize');
+        if (bufferSize) {
+            bufferSize.addEventListener('change', (e) => {
+                this.setBufferSize(parseInt(e.target.value));
+            });
+        }
+    }
+
+    setAudioVolume(volume) {
+        // Send volume setting to server via WebSocket
+        if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+            this.sendWebSocketMessage({
+                type: 'audio-settings',
+                roomId: this.roomId,
+                peerId: this.peerId,
+                settings: {
+                    volume: volume
+                }
+            });
+        }
+        
+        // Also apply locally if we have audio context
+        if (this.audioContext && this.localStream) {
+            const audioTracks = this.localStream.getAudioTracks();
+            if (audioTracks.length > 0) {
+                // Apply volume to audio track if possible
+                const track = audioTracks[0];
+                if (track.enabled) {
+                    // Note: Direct volume control on MediaStreamTrack is limited
+                    // The server-side processing will handle volume properly
+                }
+            }
+        }
+        
+        this.log(`Audio volume set to: ${Math.round(volume * 100)}%`, 'info');
+    }
+
+    setBassBoost(enabled) {
+        if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+            this.sendWebSocketMessage({
+                type: 'audio-settings',
+                roomId: this.roomId,
+                peerId: this.peerId,
+                settings: {
+                    bass_boost: enabled
+                }
+            });
+        }
+        
+        this.log(`Bass boost ${enabled ? 'enabled' : 'disabled'}`, 'info');
+    }
+
+    setTrebleBoost(enabled) {
+        if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+            this.sendWebSocketMessage({
+                type: 'audio-settings',
+                roomId: this.roomId,
+                peerId: this.peerId,
+                settings: {
+                    treble_boost: enabled
+                }
+            });
+        }
+        
+        this.log(`Treble boost ${enabled ? 'enabled' : 'disabled'}`, 'info');
+    }
+
+    setBufferSize(size) {
+        if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+            this.sendWebSocketMessage({
+                type: 'audio-settings',
+                roomId: this.roomId,
+                peerId: this.peerId,
+                settings: {
+                    buffer_size: size
+                }
+            });
+        }
+        
+        this.log(`Buffer size set to: ${size}`, 'info');
     }
 
     async loadAudioDevices() {
@@ -143,11 +258,13 @@ class AudioStreamingApp {
 
     async initializeWebRTC() {
         try {
+            console.log("initializeWebRTC");
             // Create RTCPeerConnection with STUN servers
             const configuration = {
                 iceServers: [
                     { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' }
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' },
                 ]
             };
 
@@ -156,7 +273,7 @@ class AudioStreamingApp {
             // Set up event handlers
             this.peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
-                    this.log(`Generated ICE candidate: ${event.candidate.candidate}`, 'info');
+                    console.log(`Generated ICE candidate: ${event.candidate.candidate}`, 'info');
                     this.sendWebSocketMessage({
                         type: 'ice-candidate',
                         candidate: event.candidate,
@@ -169,22 +286,23 @@ class AudioStreamingApp {
             };
 
             this.peerConnection.ontrack = (event) => {
-                this.log('Received remote audio track', 'info');
+                console.log('Received remote audio track', 'info');
                 this.remoteStream = event.streams[0];
                 this.setupRemoteAudio();
             };
-
+            
             this.peerConnection.oniceconnectionstatechange = () => {
-                this.log(`ICE connection state: ${this.peerConnection.iceConnectionState}`, 'info');
+                console.log(`ICE connection state: ${this.peerConnection.iceConnectionState}`, 'info');
             };
 
             this.peerConnection.onconnectionstatechange = () => {
-                this.log(`Connection state: ${this.peerConnection.connectionState}`, 'info');
+                console.log(`Connection state: ${this.peerConnection.connectionState}`, 'info');
             };
 
-            this.log('WebRTC peer connection initialized', 'success');
+            console.log('WebRTC peer connection initialized', 'success');
             
         } catch (error) {
+            console.log("initializeWebRTC error", error);
             throw new Error('Failed to initialize WebRTC: ' + error.message);
         }
     }
@@ -254,6 +372,12 @@ class AudioStreamingApp {
             case 'user-left-room':
                 this.log('User left room: ' + message.peerId, 'info');
                 break;
+            case 'audio-settings-updated':
+                this.log('Audio settings updated successfully', 'success');
+                break;
+            case 'audio-quality-stats':
+                this.updateAudioQualityStats(message.stats);
+                break;
             case 'auth-error':
                 this.log('Authentication failed: ' + message.message, 'error');
                 this.handleDisconnection();
@@ -304,7 +428,7 @@ class AudioStreamingApp {
                 type: answer.type,
                 sdp: answer.sdp
             }));
-            
+            console.log("Remote description set successfully");
             this.log('Remote description set successfully', 'success');
             
             // NOW add the audio track to trigger the onTrack event on the server
@@ -394,24 +518,12 @@ class AudioStreamingApp {
     async startAudio() {
         try {
             this.log('Starting audio capture...', 'info');
-            
-            const constraints = {
-                audio: {
-                    deviceId: this.audioDeviceSelect.value || undefined,
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true
-                },
-                video: false
-            };
-
-            this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+            await this.initAudio();
             
             // Set up audio analysis
             this.setupAudioAnalysis();
             
-            // Create and send offer to establish WebRTC connection
-            // The track will be added after the answer is received
+            // Now create and send offer with the track already added
             await this.createAndSendOffer();
             
             this.isAudioActive = true;
@@ -421,6 +533,44 @@ class AudioStreamingApp {
         } catch (error) {
             this.log('Failed to start audio: ' + error.message, 'error');
         }
+    }
+
+    async initAudio() {
+        const constraints = {
+            audio: {
+                deviceId: this.audioDeviceSelect.value || undefined,
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false,
+            },
+            video: false
+        };
+
+        this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+        // Force gain boost via Web Audio API
+        const audioContext = new AudioContext({ sampleRate: 48000 });
+        const source = audioContext.createMediaStreamSource(this.localStream);
+
+        // Create gain node to amplify mic
+        const gainNode = audioContext.createGain();
+        gainNode.gain.value = 3.0; // Increase (try 2.0 ~ 4.0, adjust)
+
+        // Connect chain: mic -> gain -> destination
+        source.connect(gainNode);
+
+        // Create new stream with boosted audio
+        const destination = audioContext.createMediaStreamDestination();
+        gainNode.connect(destination);
+
+        const boostedTrack = destination.stream.getAudioTracks()[0];
+
+        // Replace original track in peer connection
+        this.peerConnection.addTrack(boostedTrack, destination.stream);
+
+        // Debug what browser actually gave you
+        const settings = boostedTrack.getSettings();
+        this.log(`Final boosted audio track settings: ${JSON.stringify(settings)}`, 'info');
     }
 
     async createAndSendOffer() {
@@ -768,6 +918,32 @@ class AudioStreamingApp {
             this.log('Reconnection failed: ' + error.message, 'error');
             this.updateConnectionStatus('disconnected');
         }
+    }
+
+    updateAudioQualityStats(stats) {
+        // Update audio quality statistics display
+        if (stats.audio_quality_score !== undefined) {
+            const qualityElement = document.getElementById('audioQualityScore');
+            if (qualityElement) {
+                qualityElement.textContent = stats.audio_quality_score.toFixed(1);
+            }
+        }
+        
+        if (stats.frames_received !== undefined) {
+            const framesElement = document.getElementById('framesReceived');
+            if (framesElement) {
+                framesElement.textContent = stats.frames_received;
+            }
+        }
+        
+        if (stats.buffer_underruns !== undefined) {
+            const underrunsElement = document.getElementById('bufferUnderruns');
+            if (underrunsElement) {
+                underrunsElement.textContent = stats.buffer_underruns;
+            }
+        }
+        
+        this.log(`Audio quality stats updated: Quality=${stats.audio_quality_score?.toFixed(1) || 'N/A'}, Frames=${stats.frames_received || 0}, Underruns=${stats.buffer_underruns || 0}`, 'info');
     }
 }
 

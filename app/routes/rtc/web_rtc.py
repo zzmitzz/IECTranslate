@@ -2,13 +2,16 @@
 import asyncio
 import json
 import logging
-from aiortc import RTCPeerConnection, RTCSessionDescription, RTCIceCandidate
+from threading import local
+from aiortc import RTCPeerConnection, RTCSessionDescription, RTCIceCandidate, RTCConfiguration, RTCIceServer
 from aiortc.contrib.media import MediaStreamTrack, MediaPlayer, MediaRecorder, MediaRelay
 from typing import Dict, Set, Optional
 from .room import Rooms
 from .audio_handler import AudioStreamHandler, initialize_audio_processors
-
-
+import sounddevice as sd
+from av import AudioFrame
+import numpy as np
+from collections import deque
 logger = logging.getLogger(__name__)
 
 class WebRTCHandler : 
@@ -23,7 +26,20 @@ class WebRTCHandler :
         initialize_audio_processors(self.audio_handler)
 
     async def create_peer_connection(self, room_id: str, peer_id: str) -> RTCPeerConnection:
-        pc = RTCPeerConnection()
+        
+        config = RTCConfiguration([
+            RTCIceServer(urls="stun:stun.l.google.com:19302"),
+            RTCIceServer(urls="stun:stun1.l.google.com:19302"),
+            RTCIceServer(urls="stun:stun2.l.google.com:19302"),
+            RTCIceServer(urls="stun:stun3.l.google.com:19302"),
+            RTCIceServer(urls="stun:stun4.l.google.com:19302"),
+            RTCIceServer(urls="stun:stun.stunprotocol.org:3478"),
+            RTCIceServer(urls="stun:stun1.opentelecom.ro:3478"),
+        ])
+        
+        logger.info(f"Creating RTCPeerConnection with ICE configuration: {config}")
+        
+        pc = RTCPeerConnection(config)
         self.connections[peer_id] = pc
 
         # Set up audio track handling
@@ -66,7 +82,7 @@ class WebRTCHandler :
         return pc
 
     async def handle_audio_track(self, peer_id: str, track: MediaStreamTrack):
-        # """Handle incoming audio track from a peer"""
+        """Handle incoming audio track from a peer"""
         logger.info(f"Setting up audio track handling for peer {peer_id}")
         
         # Update audio statistics
@@ -82,11 +98,24 @@ class WebRTCHandler :
         other_peers_count = len([p for p in room_peers if p != peer_id])
         
         logger.info(f"Peer {peer_id} in room {room_id} with {other_peers_count} other peers")
+        print(f"Peer {peer_id} in room {room_id} with {other_peers_count} other peers")
+        # Create local audio player for testing
+        local_player = AudioPlayerTrack(track)
+        local_player.start()
+        # logger.info(f"Created AudioPlayerTrack for peer {peer_id}")
         
-        # Forward the audio track to other peers in the same room
-        await self.forward_audio_track_to_room(peer_id, track)
+        # # Forward the audio track to other peers in the same room
+        # await self.forward_audio_track_to_room(peer_id, track)
         
-        logger.info(f"Audio track from peer {peer_id} is now active and processed")
+        # logger.info(f"Audio track from peer {peer_id} is now active and processed")
+        
+        # # Log track details for debugging
+        # logger.info(f"Track ID: {track.id}, Kind: {track.kind}, Enabled: {track.enabled}")
+        
+        # # Start audio processing in background (don't block the main function)
+        # asyncio.create_task(self.process_audio_track(peer_id, local_player))
+
+
 
     async def forward_audio_track_to_room(self, source_peer_id: str, track: MediaStreamTrack):
         """Forward audio track to all other peers in the same room"""
@@ -187,17 +216,41 @@ class WebRTCHandler :
         print("handle_offer", room_id, peer_id, offer)
         pc = await self.create_peer_connection(room_id, peer_id)
         
-        # Set up ICE candidate collection
+        # Set up ICE candidate collection BEFORE setting local description
         ice_candidates = []
+        ice_gathering_started = asyncio.Event()
+        ice_gathering_complete = asyncio.Event()
         
         @pc.on("icecandidate")
         def on_ice_candidate(candidate):
+            ice_gathering_started.set()
             if candidate:
+                logger.info(f"ICE candidate generated for peer {peer_id}: {candidate.candidate}")
+                logger.info(f"ICE candidate details - sdpMid: {candidate.sdpMid}, sdpMLineIndex: {candidate.sdpMLineIndex}")
                 ice_candidates.append({
                     "candidate": candidate.candidate,
                     "sdpMid": candidate.sdpMid,
                     "sdpMLineIndex": candidate.sdpMLineIndex
                 })
+            else:
+                logger.info(f"ICE candidate generation completed for peer {peer_id}")
+                ice_gathering_complete.set()
+        
+        @pc.on("connectionstatechange")
+        def on_connection_state_change():
+            logger.info(f"Connection state changed for peer {peer_id}: {pc.connectionState}")
+    
+        @pc.on("iceconnectionstatechange") 
+        def on_ice_connection_state_change():
+            print(f"ICE connection state changed for peer {peer_id}: {pc.iceConnectionState}")
+    
+        # Also monitor ICE gathering state changes
+        @pc.on("icegatheringstatechange")
+        def on_ice_gathering_state_change():
+            logger.info(f"ICE gathering state changed for peer {peer_id}: {pc.iceGatheringState}")
+            if pc.iceGatheringState == "complete":
+                logger.info(f"ICE gathering completed via state change for peer {peer_id}")
+                ice_gathering_complete.set()
         
         await pc.setRemoteDescription(
             RTCSessionDescription(
@@ -207,14 +260,32 @@ class WebRTCHandler :
         )
 
         answer = await pc.createAnswer()
-        await pc.setLocalDescription(answer)
+        print(f"Created answer for peer {peer_id}, SDP: {answer.sdp[:200]}...")
         
-        # Wait for ICE gathering to complete
-        while pc.iceGatheringState != "complete":
-            await asyncio.sleep(0.1)
-            # Add a timeout to prevent infinite waiting
-            if len(ice_candidates) > 10:  # Arbitrary limit
-                break
+        # ICE gathering starts here when we set local description
+        await pc.setLocalDescription(answer)
+        print(f"Set local description for peer {peer_id}")
+        
+        print(f"Waiting for ICE gathering to complete for peer {peer_id}")
+        print(f"Current ICE gathering state: {pc.iceGatheringState}")
+        print(f"Current connection state: {pc.connectionState}")
+        print(f"Current ICE connection state: {pc.iceConnectionState}")
+        
+        # Wait for ICE gathering to complete with timeout
+        try:
+            await asyncio.wait_for(ice_gathering_complete.wait(), timeout=15.0)  # 30 second timeout
+            logger.info(f"ICE gathering completed for peer {peer_id}")
+        except asyncio.TimeoutError:
+            logger.warning(f"ICE gathering timeout for peer {peer_id}, proceeding with {len(ice_candidates)} candidates")
+            logger.warning(f"ICE gathering state at timeout: {pc.iceGatheringState}")
+        
+        # Also check the gathering state
+        logger.info(f"Final ICE gathering state: {pc.iceGatheringState}")
+        logger.info(f"Total ICE candidates collected: {len(ice_candidates)}")
+        
+        # Log all collected candidates for debugging
+        for i, candidate in enumerate(ice_candidates):
+            logger.info(f"ICE Candidate {i+1}: {candidate}")
 
         return {
             "sdp": pc.localDescription.sdp,
@@ -247,6 +318,7 @@ class WebRTCHandler :
         logger.info(f"Updated ICE connection state: {pc.iceConnectionState}")
 
     async def handle_candidate(self, room_id: str, peer_id: str, candidate: dict):
+        print("handle_candidate", room_id, peer_id, candidate)
         if peer_id not in self.connections:
             raise ValueError(f"No connection found for user {peer_id}")
         
@@ -382,3 +454,98 @@ class WebRTCHandler :
             }
         
         return status
+
+
+
+
+class AudioPlayerTrack:
+    def __init__(self, track: MediaStreamTrack, target_rate: int = 48000, buffer_seconds: float = 0.3):
+        """
+        Play an incoming WebRTC MediaStreamTrack locally with smooth audio.
+
+        :param track: incoming MediaStreamTrack (audio)
+        :param target_rate: playback sample rate (usually 48000 for WebRTC)
+        :param buffer_seconds: how much audio to buffer (0.2–0.5 recommended)
+        """
+        self.track = track
+        self.target_rate = target_rate
+        self.channels = 2  # force stereo output
+        self.buffer = deque()
+        self.buffer_size = int(target_rate * buffer_seconds)
+        self._task = None
+        self._stopped = asyncio.Event()
+        self.stream = None
+
+    def start(self):
+        """Start playback in background"""
+        # Create the sounddevice stream but don't start immediately
+        self.stream = sd.OutputStream(
+            samplerate=self.target_rate,
+            channels=self.channels,
+            dtype='float32',
+            callback=self._audio_callback,
+            blocksize=1024,
+        )
+
+        # Start pulling frames
+        self._task = asyncio.create_task(self._run())
+
+        # Start the stream after pre-filling some audio
+        asyncio.create_task(self._warmup())
+
+    async def stop(self):
+        """Stop playback"""
+        self._stopped.set()
+        if self._task:
+            await self._task
+        if self.stream:
+            self.stream.stop()
+            self.stream.close()
+
+    async def _warmup(self):
+        """Allow buffer to fill before starting playback"""
+        await asyncio.sleep(0.2)  # 200ms pre-buffer
+        if not self._stopped.is_set() and self.stream:
+            self.stream.start()
+
+    async def _run(self):
+        """Background: pull frames from WebRTC track and buffer them"""
+        try:
+            while not self._stopped.is_set():
+                frame: AudioFrame = await self.track.recv()
+
+                pcm = frame.to_ndarray()   # shape: (channels, samples)
+                pcm = np.transpose(pcm)    # → (samples, channels)
+
+                # Fix 1: normalize correctly depending on dtype
+                if pcm.dtype == np.int16:
+                    pcm = pcm.astype(np.float32) / 32768.0
+                elif pcm.dtype != np.float32:
+                    pcm = pcm.astype(np.float32)
+
+                # Fix 2: handle mono → duplicate to stereo
+                if pcm.shape[1] == 1:
+                    pcm = np.repeat(pcm, 2, axis=1)
+
+                # Add samples to ring buffer
+                for sample in pcm:
+                    self.buffer.append(sample)
+
+                # Trim buffer if too big
+                while len(self.buffer) > self.buffer_size:
+                    self.buffer.popleft()
+
+        except Exception as e:
+            print(f"Audio player error: {e}")
+
+    def _audio_callback(self, outdata, frames, time, status):
+        """Sounddevice realtime callback"""
+        chunk = []
+        for _ in range(frames):
+            if self.buffer:
+                chunk.append(self.buffer.popleft())
+            else:
+                # Fix 3: silence if underrun
+                chunk.append([0.0] * self.channels)
+
+        outdata[:] = np.array(chunk, dtype=np.float32)
