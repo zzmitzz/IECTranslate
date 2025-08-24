@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Track Consumer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 10px 10px 0;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .connected { background-color: #d4edda; color: #155724; }
+        .disconnected { background-color: #f8d7da; color: #721c24; }
+        .connecting { background-color: #fff3cd; color: #856404; }
+        .log {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>WebRTC Track Consumer</h1>
+        <p>Simple script to consume relay tracks from WebRTC room</p>
+        
+        <button id="connectBtn" onclick="connect()">Connect to Room</button>
+        <button id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
+        
+        <div id="status" class="status disconnected">Disconnected</div>
+        
+        <audio id="remoteAudio" controls autoplay style="width: 100%; margin: 20px 0;"></audio>
+        
+        <div id="log" class="log"></div>
+    </div>
+
+    <script>
+        let peerConnection = null;
+        let webSocket = null;
+        let isConnected = false;
+
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${timestamp}] ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(message);
+        }
+
+        function updateStatus(message, className) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${className}`;
+        }
+
+        function updateButtons() {
+            document.getElementById('connectBtn').disabled = isConnected;
+            document.getElementById('disconnectBtn').disabled = !isConnected;
+        }
+
+        async function connect() {
+            try {
+                updateStatus('Connecting...', 'connecting');
+                log('Starting connection...');
+
+                // Create RTCPeerConnection
+                const config = {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' }
+                    ]
+                };
+                
+                peerConnection = new RTCPeerConnection(config);
+                
+                // Handle incoming tracks
+                peerConnection.ontrack = (event) => {
+                    log(`Received ${event.track.kind} track`);
+                    document.getElementById('remoteAudio').srcObject = event.streams[0];
+                };
+
+                // Handle ICE candidates
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        const message = {
+                            type: 'ice-candidate',
+                            candidate: event.candidate.candidate,
+                            sdpMid: event.candidate.sdpMid,
+                            sdpMLineIndex: event.candidate.sdpMLineIndex
+                        };
+                        webSocket.send(JSON.stringify(message));
+                    }
+                };
+
+                // Handle connection state changes
+                peerConnection.onconnectionstatechange = () => {
+                    log(`Connection state: ${peerConnection.connectionState}`);
+                    if (peerConnection.connectionState === 'connected') {
+                        updateStatus('Connected', 'connected');
+                        isConnected = true;
+                        updateButtons();
+                    }
+                };
+
+                // Connect WebSocket
+                const wsUrl = 'ws://localhost:8000/api/v1/ws/ahihiasd126?api_key=fvCDQX3jwjcLCyJUTdgjW9RT1nISDI7H8B0VBqTWAw56Fh13aQ74SDXYGz0bx45gJNyck71dJC2fzse9uEs9nnNePfN8S9Hn6503WR0tEsAfWKSfW2ZLdnrqN4DyGXMW';
+                webSocket = new WebSocket(wsUrl);
+                
+                webSocket.onopen = () => {
+                    log('WebSocket connected');
+                    
+                    // Join room
+                    const joinMessage = {
+                        type: 'join-room',
+                        roomId: 'test-room',
+                        peerId: 'peer-1'
+                    };
+                    webSocket.send(JSON.stringify(joinMessage));
+                    
+                    // Create and send offer
+                    createAndSendOffer();
+                };
+
+                webSocket.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    log(`Received: ${data.type}`);
+                    handleMessage(data);
+                };
+
+                webSocket.onerror = (error) => {
+                    log('WebSocket error: ' + error);
+                    updateStatus('Connection failed', 'disconnected');
+                };
+
+                webSocket.onclose = () => {
+                    log('WebSocket closed');
+                    updateStatus('Disconnected', 'disconnected');
+                    isConnected = false;
+                    updateButtons();
+                };
+
+            } catch (error) {
+                log('Connection error: ' + error.message);
+                updateStatus('Connection failed', 'disconnected');
+            }
+        }
+
+        async function createAndSendOffer() {
+            try {
+                const offer = await peerConnection.createOffer({
+                    offerToReceiveAudio: true,
+                    offerToReceiveVideo: false
+                });
+                
+                await peerConnection.setLocalDescription(offer);
+                
+                const offerMessage = {
+                    type: 'offer',
+                    offer: offer,  // Send the full offer object, not just sdp
+                    roomId: 'test-room',
+                    peerId: 'consumer-' + Date.now()
+                };
+                
+                webSocket.send(JSON.stringify(offerMessage));
+                log('Sent offer');
+                
+            } catch (error) {
+                log('Error creating offer: ' + error.message);
+            }
+        }
+
+        function handleMessage(data) {
+            switch (data.type) {
+                case 'room-joined':
+                    log('Joined room: ' + data.roomId);
+                    break;
+                    
+                case 'answer':
+                    handleAnswer(data);
+                    break;
+                    
+                case 'ice-candidate':
+                    handleIceCandidate(data);
+                    break;
+                    
+                case 'error':
+                    log('Server error: ' + data.message);
+                    break;
+            }
+        }
+
+        async function handleAnswer(data) {
+            try {
+                log('Received answer data: ' + JSON.stringify(data));
+                
+                // The server sends answer nested in data.answer
+                const answer = data.answer;
+                if (!answer || !answer.sdp) {
+                    log('Invalid answer format received: ' + JSON.stringify(data));
+                    return;
+                }
+                
+                await peerConnection.setRemoteDescription(new RTCSessionDescription({
+                    type: answer.type || 'answer',
+                    sdp: answer.sdp
+                }));
+                log('Set remote description from answer');
+                
+                // Handle ICE candidates if included
+                if (answer.ice_candidates && Array.isArray(answer.ice_candidates)) {
+                    log('Processing ' + answer.ice_candidates.length + ' ICE candidates...');
+                    for (const candidateData of answer.ice_candidates) {
+                        try {
+                            const iceCandidate = new RTCIceCandidate({
+                                candidate: candidateData.candidate,
+                                sdpMid: candidateData.sdpMid,
+                                sdpMLineIndex: candidateData.sdpMLineIndex
+                            });
+                            await peerConnection.addIceCandidate(iceCandidate);
+                            log('Added ICE candidate');
+                        } catch (error) {
+                            log('Error adding ICE candidate: ' + error.message);
+                        }
+                    }
+                }
+                
+            } catch (error) {
+                log('Error handling answer: ' + error.message);
+            }
+        }
+
+        async function handleIceCandidate(data) {
+            try {
+                const candidate = new RTCIceCandidate({
+                    candidate: data.candidate,
+                    sdpMid: data.sdpMid,
+                    sdpMLineIndex: data.sdpMLineIndex
+                });
+                await peerConnection.addIceCandidate(candidate);
+                log('Added ICE candidate');
+            } catch (error) {
+                log('Error adding ICE candidate: ' + error.message);
+            }
+        }
+
+        function disconnect() {
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            
+            if (webSocket) {
+                webSocket.close();
+                webSocket = null;
+            }
+            
+            isConnected = false;
+            updateStatus('Disconnected', 'disconnected');
+            updateButtons();
+            log('Disconnected');
+        }
+
+        // Initialize
+        updateButtons();
+    </script>
+</body>
+</html>

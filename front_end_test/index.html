@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Audio Streaming - Test Suite</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 15px;
+            font-weight: 300;
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            padding: 40px;
+        }
+
+        .test-section {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            border: 2px solid #e9ecef;
+        }
+
+        .test-section h2 {
+            color: #495057;
+            margin-bottom: 20px;
+            font-size: 1.8rem;
+            display: flex;
+            align-items: center;
+        }
+
+        .test-section h2::before {
+            content: "🎯";
+            margin-right: 15px;
+            font-size: 1.5rem;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            margin: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 30px rgba(79, 172, 254, 0.4);
+        }
+
+        .btn-large {
+            padding: 20px 40px;
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .feature-list {
+            list-style: none;
+            margin: 20px 0;
+        }
+
+        .feature-list li {
+            padding: 10px 0;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            align-items: center;
+        }
+
+        .feature-list li::before {
+            content: "✅";
+            margin-right: 15px;
+            font-size: 1.2rem;
+        }
+
+        .setup-steps {
+            background: #e3f2fd;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .setup-steps h3 {
+            color: #1976d2;
+            margin-bottom: 15px;
+        }
+
+        .setup-steps ol {
+            margin-left: 20px;
+        }
+
+        .setup-steps li {
+            margin: 10px 0;
+            color: #424242;
+        }
+
+        .warning {
+            background: #fff3e0;
+            border: 2px solid #ff9800;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .warning h3 {
+            color: #f57c00;
+            margin-bottom: 10px;
+        }
+
+        .code-block {
+            background: #2c3e50;
+            color: #ecf0f1;
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            margin: 15px 0;
+            overflow-x: auto;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            background: #6c757d;
+        }
+
+        .status-ready {
+            background: #51cf66;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
+            border-top: 1px solid #dee2e6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎵 WebRTC Audio Streaming</h1>
+            <p>Complete test suite for real-time audio streaming</p>
+        </div>
+
+        <div class="main-content">
+            <!-- Main Test Application -->
+            <div class="test-section">
+                <h2>Audio Streaming Application</h2>
+                <p>Launch the main WebRTC audio streaming application with full functionality:</p>
+                <ul class="feature-list">
+                    <li>Real-time audio streaming</li>
+                    <li>Audio visualization and analysis</li>
+                    <li>Recording capabilities</li>
+                    <li>Connection management</li>
+                    <li>Statistics monitoring</li>
+                </ul>
+                
+                <a href="audio_streaming.html" class="btn btn-large">🚀 Launch Audio Streaming App</a>
+            </div>
+
+            <!-- Setup Instructions -->
+            <div class="test-section">
+                <h2>Setup Instructions</h2>
+                <div class="setup-steps">
+                    <h3>Prerequisites</h3>
+                    <ol>
+                        <li>Ensure your WebRTC server is running (Python backend)</li>
+                        <li>Check that the server is accessible at the configured URL</li>
+                        <li>Make sure your browser supports WebRTC (Chrome, Firefox, Safari)</li>
+                        <li>Allow microphone access when prompted</li>
+                    </ol>
+                </div>
+
+                <div class="warning">
+                    <h3>⚠️ Important Notes</h3>
+                    <ul class="feature-list">
+                        <li>HTTPS is required for production use (WebRTC requirement)</li>
+                        <li>Local development works with HTTP on localhost</li>
+                        <li>Ensure your firewall allows WebRTC connections</li>
+                        <li>Check browser console for detailed connection logs</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Server Configuration -->
+            <div class="test-section">
+                <h2>Server Configuration</h2>
+                <p>Default server settings for testing:</p>
+                
+                <div class="code-block">
+                    Server URL: ws://localhost:8000/ws<br>
+                    Room ID: test-room<br>
+                    Peer ID: peer-1 (or any unique identifier)
+                </div>
+
+                <p>To start the server, run:</p>
+                <div class="code-block">
+                    python run_server.py
+                </div>
+            </div>
+
+            <!-- Testing Scenarios -->
+            <div class="test-section">
+                <h2>Testing Scenarios</h2>
+                <p>Test the following scenarios to verify functionality:</p>
+                
+                <ul class="feature-list">
+                    <li><strong>Single Peer:</strong> Connect and test audio capture/playback</li>
+                    <li><strong>Multiple Peers:</strong> Open multiple browser tabs with different peer IDs</li>
+                    <li><strong>Audio Recording:</strong> Test recording functionality</li>
+                    <li><strong>Device Switching:</strong> Test different audio input devices</li>
+                    <li><strong>Connection Recovery:</strong> Test reconnection after disconnection</li>
+                </ul>
+            </div>
+
+            <!-- Troubleshooting -->
+            <div class="test-section">
+                <h2>Troubleshooting</h2>
+                <p>Common issues and solutions:</p>
+                
+                <ul class="feature-list">
+                    <li><strong>Connection Failed:</strong> Check server status and WebSocket URL</li>
+                    <li><strong>No Audio:</strong> Check microphone permissions and device selection</li>
+                    <li><strong>Poor Quality:</strong> Check network conditions and audio constraints</li>
+                    <li><strong>Recording Issues:</strong> Ensure browser supports MediaRecorder API</li>
+                </ul>
+
+                <p>For detailed debugging, check the browser console and the application logs.</p>
+            </div>
+
+            <!-- Quick Status Check -->
+            <div class="test-section">
+                <h2>Quick Status Check</h2>
+                <p>Current system status:</p>
+                
+                <div style="margin: 20px 0;">
+                    <span class="status-indicator" id="serverStatus"></span>
+                    <span id="serverStatusText">Server status unknown</span>
+                </div>
+
+                <button class="btn" onclick="checkServerStatus()">Check Server Status</button>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>WebRTC Audio Streaming Test Suite | Built with modern web technologies</p>
+        </div>
+    </div>
+
+    <script>
+        async function checkServerStatus() {
+            const statusElement = document.getElementById('serverStatus');
+            const statusText = document.getElementById('serverStatusText');
+            
+            statusElement.className = 'status-indicator';
+            statusText.textContent = 'Checking server status...';
+            
+            try {
+                const response = await fetch('http://localhost:8000/health', {
+                    method: 'GET',
+                    mode: 'cors'
+                });
+                
+                if (response.ok) {
+                    statusElement.classList.add('status-ready');
+                    statusText.textContent = 'Server is running and accessible';
+                } else {
+                    throw new Error('Server responded with status: ' + response.status);
+                }
+            } catch (error) {
+                statusElement.className = 'status-indicator';
+                statusText.textContent = 'Server is not accessible: ' + error.message;
+            }
+        }
+
+        // Auto-check server status on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(checkServerStatus, 1000);
+        });
+    </script>
+</body>
+</html>

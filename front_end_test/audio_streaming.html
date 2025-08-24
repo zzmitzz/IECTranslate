@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Audio Streaming</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            padding: 40px;
+        }
+
+        .connection-section {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            border: 2px solid #e9ecef;
+        }
+
+        .connection-section h2 {
+            color: #495057;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #495057;
+            font-weight: 500;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #4facfe;
+            box-shadow: 0 0 0 3px rgba(79, 172, 254, 0.1);
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(79, 172, 254, 0.3);
+        }
+
+        .btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #51cf66 0%, #40c057 100%);
+        }
+
+        .audio-controls {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            border: 2px solid #e9ecef;
+        }
+
+        .audio-controls h2 {
+            color: #495057;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+
+        .audio-visualizer {
+            background: #2c3e50;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            height: 200px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .audio-bars {
+            display: flex;
+            align-items: flex-end;
+            height: 100%;
+            gap: 2px;
+        }
+
+        .audio-bar {
+            background: linear-gradient(to top, #4facfe, #00f2fe);
+            width: 8px;
+            border-radius: 2px;
+            transition: height 0.1s ease;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            background: #6c757d;
+        }
+
+        .status-connected {
+            background: #51cf66;
+            animation: pulse 2s infinite;
+        }
+
+        .status-disconnected {
+            background: #ff6b6b;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #dee2e6;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #4facfe;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+
+        .log-container {
+            background: #2c3e50;
+            color: #ecf0f1;
+            border-radius: 10px;
+            padding: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 5px 0;
+            border-bottom: 1px solid #34495e;
+        }
+
+        .log-info { color: #3498db; }
+        .log-success { color: #2ecc71; }
+        .log-warning { color: #f39c12; }
+        .log-error { color: #e74c3c; }
+
+        .hidden {
+            display: none;
+        }
+
+        .recording-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            background: #ff6b6b;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                border-radius: 15px;
+            }
+            
+            .main-content {
+                padding: 20px;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎵 WebRTC Audio Streaming</h1>
+            <p>Real-time audio streaming with WebRTC technology</p>
+        </div>
+
+        <div class="main-content">
+            <!-- Connection Section -->
+            <div class="connection-section">
+                <h2>🔗 Connection Settings</h2>
+                <div class="form-group">
+                    <label for="roomId">Room ID:</label>
+                    <input type="text" id="roomId" placeholder="Enter room ID" value="test-room">
+                </div>
+                <div class="form-group">
+                    <label for="peerId">Peer ID:</label>
+                    <input type="text" id="peerId" placeholder="Enter peer ID" value="peer-1">
+                </div>
+                <div class="form-group">
+                    <label for="serverUrl">WebSocket Server URL:</label>
+                    <input type="text" id="serverUrl" placeholder="WebSocket server URL" value="ws://localhost:8000/api/v1/ws/ahihiasd123">
+                </div>
+                <div class="form-group">
+                    <label for="apiKey">API Key:</label>
+                    <input type="password" id="apiKey" placeholder="Enter your API key" value="">
+                </div>
+                
+                <button class="btn" id="connectBtn">Connect</button>
+                <button class="btn btn-danger" id="disconnectBtn" disabled>Disconnect</button>
+                
+                <div style="margin-top: 15px;">
+                    <span class="status-indicator" id="connectionStatus"></span>
+                    <span id="connectionText">Disconnected</span>
+                </div>
+            </div>
+
+            <!-- Audio Controls -->
+            <div class="audio-controls">
+                <h2>🎤 Audio Controls</h2>
+                
+                <div style="margin-bottom: 20px;">
+                    <button class="btn" id="startAudioBtn" disabled>Start Audio</button>
+                    <button class="btn btn-danger" id="stopAudioBtn" disabled>Stop Audio</button>
+                    <button class="btn btn-success" id="startRecordingBtn" disabled>Start Recording</button>
+                    <button class="btn btn-danger" id="stopRecordingBtn" disabled>Stop Recording</button>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <span id="recordingStatus" class="hidden">
+                        <span class="recording-indicator"></span>
+                        Recording in progress...
+                    </span>
+                </div>
+
+                <!-- Audio Visualizer -->
+                <div class="audio-visualizer">
+                    <div class="audio-bars" id="audioBars"></div>
+                </div>
+
+                <!-- Audio Settings -->
+                <div style="margin-top: 20px;">
+                    <label for="audioDevice">Audio Input Device:</label>
+                    <select id="audioDevice" style="margin-left: 10px; padding: 8px; border-radius: 5px;">
+                        <option value="">Default</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Statistics -->
+            <div class="audio-controls">
+                <h2>📊 Audio Statistics</h2>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="audioLevel">0</div>
+                        <div class="stat-label">Audio Level (dB)</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="sampleRate">0</div>
+                        <div class="stat-label">Sample Rate (Hz)</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="bitrate">0</div>
+                        <div class="stat-label">Bitrate (kbps)</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="packetLoss">0</div>
+                        <div class="stat-label">Packet Loss (%)</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Logs -->
+            <div class="audio-controls">
+                <h2>📝 Connection Logs</h2>
+                <div class="log-container" id="logContainer"></div>
+                <button class="btn" id="clearLogsBtn" style="margin-top: 15px;">Clear Logs</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="audio_streaming.js"></script>
+</body>
+</html> 
